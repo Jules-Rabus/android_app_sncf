@@ -2,13 +2,10 @@ package com.example.tp1
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.ListView
 import androidx.appcompat.app.AppCompatActivity
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 class MainActivity : AppCompatActivity() {
 
@@ -23,10 +20,10 @@ class MainActivity : AppCompatActivity() {
         inputStream.bufferedReader().useLines { lines ->
             lines.forEach {
 
-                // On converti en tableau en utilisant ';' comme délimiteur
+                // On convertit en tableau en utilisant ';' comme délimiteur
                 val lineArray = it.split(";")
 
-                //On vérifie qu'on a bien 4 élémeents et qu'on ne récupère pas la 1ere ligne du fichier
+                //On vérifie qu'on a bien 4 éléments et qu'on ne récupère pas la 1ere ligne du fichier
                 if (lineArray.size == 4 && lineArray[0] != "CODE_UIC") {
                     val station = Station(lineArray[0].toInt(),lineArray[1],lineArray[2].toDouble(),lineArray[3].toDouble())         // On crée un objet station
                     this.stationList.add(station)               // On le rajoute à l'arrayList
@@ -36,60 +33,19 @@ class MainActivity : AppCompatActivity() {
         inputStream.close()
     }
 
-    // fonction permettant de traiter les données de l'api SNCF
+    // Fonction permettant de traiter les données de l'api SNCF
     private fun traitementApi() {
 
-        // On récupère la requete
-        val body = station!!.getBody()      // le !!, fait que l'élement ne peut être null
+        val trainList : ArrayList<Train> = station!!.traitementApi()
 
-        // On vérifie que la requete n'est pas vide
-        if (body != null) {
+        // On change la listView avec le nouvel arrayList
+        val listViewTrain = findViewById<ListView>(R.id.list_view)
+        listViewTrain.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, trainList)
 
-            // On récupere et itère sur chaque départ de la gare
-            val departs = body.getJSONArray("departures")
-            val trainList: ArrayList<Train> = ArrayList()
-            for (i in 0 until departs.length()) {
+        listViewTrain.setOnItemClickListener { _, _, position, _ ->
 
-                //On récupère chaque élement qui nous intéresse, et fait le traitement nécessaire pour le transformer en objet train
-                val trainJson = departs.getJSONObject(i)
-                val trainId = trainJson.getJSONObject("display_informations").getString("trip_short_name").toInt()
-                val typeTrain = trainJson.getJSONObject("display_informations").getString("physical_mode").split(" ")[0]
-
-                val vehicle_journey = trainJson.getJSONArray("links").getJSONObject(1).getString("id")
-
-                val formatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
-                val departDate = trainJson.getJSONObject("stop_date_time").getString("departure_date_time")
-                val departHeure = LocalDateTime.parse(departDate, formatter)
-                val departHeures = departHeure.format(DateTimeFormatter.ofPattern("HH"))
-                val departMinutes = departHeure.format(DateTimeFormatter.ofPattern("mm"))
-
-                //On crée l'objet train et l'ajoute à l'arrayList
-                val train = Train(trainId, TypeTrain.valueOf(typeTrain), departHeures, departMinutes)
-                if(!typeTrain.equals("Autocar") && !typeTrain.equals("additional") && !typeTrain.equals("Bus")){
-                    train.run(vehicle_journey)
-                }
-                else{
-
-                    val from = Stop("","","","",station!!)
-                    train.setFrom(from);
-                    val direction = trainJson.getJSONObject("route").getJSONObject("direction").getJSONObject("stop_area")
-                    val stationLat = direction.getJSONObject("coord").getString("lat").toDouble()
-                    val stationLon = direction.getJSONObject("coord").getString("lon").toDouble()
-                    val stationUic = direction.getString("id").split(":")[2].toInt()
-                    val stationLibelle = direction.getString("name").split("(")[0]
-                    val to = Station(stationUic,stationLibelle,stationLon,stationLat)
-                    val stop = Stop("","","","",to);
-                    train.setTo(stop)
-                }
-                trainList.add(train)
-
-            }
-
-            // On change la listView avec le nouvel arrayList
-            val listViewTrain = findViewById<ListView>(R.id.list_view)
-            listViewTrain.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, trainList)
-
-            listViewTrain.setOnItemClickListener { _, _, position, _ ->
+            // On vérifie qu'il n'y a pas d'erreur avant d'ouvrir la map
+            if(trainList[position].getTo() != null && trainList[position].getFrom() != null && trainList[position].getStops() != null ){
                 val intent = Intent(this@MainActivity, MapsActivity::class.java).apply {
                     putExtra("train", trainList[position])
                 }

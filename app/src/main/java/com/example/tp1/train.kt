@@ -63,26 +63,33 @@ class Train(
         return localMinutes
     }
 
-    fun getStops(): ArrayList<Stop>? {
+    fun getStops(): ArrayList<Stop> {
         return stops
     }
 
+    // Fonction qui permet l'ajout à l'arraylist les stops du train, ou au from / to
     private fun addStop(stop: Stop, departureStation: Boolean, arrivalStation: Boolean){
+
+        // Si c'est la station de départ on le rajoute au from
         if(departureStation){
             from = stop
             return
         }
+        // Si c'est la station d'arrivée on le rajoute au to
         if(arrivalStation){
             to = stop
             return
         }
+
+        // Si ce n'est pas une station d'arrivée / de départ c'est un arret
         if(!arrivalStation || !departureStation){
-            stops!!.add(stop)
+            stops.add(stop)
         }
 
     }
 
-    fun run(vehicle_journey: String) {
+    // Fonction faisait l'appel api permettant de récupérer le trajet du train
+    fun run(vehicle_journey: String, station: Station) {
         val credential = Credentials.basic("xxxxx", "") // Clé api sncf à mettre dans l'username
 
         // Requête pour api
@@ -100,22 +107,21 @@ class Train(
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
-                    if (!response.isSuccessful) throw IOException("Unexpected code $response")
-
-                    // On récupère et transforme le retour de la requete en Json
-                    body = JSONObject(response.body!!.string())
+                    if (!response.isSuccessful){
+                        println("Erreur 404 : ${request.url}")
+                    }
+                    else{
+                        // On récupère le vehicle journey et transforme le retour de la requete en Json
+                        body = JSONObject(response.body!!.string())
+                    }
 
                 }
-                countDownLatch.countDown()
+                countDownLatch.countDown()      // On débloque l'éxécution une fois la requête reçu
             }
         })
 
         countDownLatch.await()
-        traitementApi()
-
-    }
-
-    private fun apiFrom(){
+        traitementApi(station, false)       // On appel la fonction qui traite l'api et ne rajoute que les arrets à partir de la gare sélectionné
 
     }
 
@@ -127,36 +133,62 @@ class Train(
         return date.substring(2,4)
     }
 
-    private fun traitementApi(){
-        val stopApi = body!!.getJSONArray("vehicle_journeys").getJSONObject(0).getJSONArray("stop_times")
+    // Fonction qui traite le retour de l'api
+    private fun traitementApi(stationDepart : Station, trajetAvant: Boolean) {
 
-        for (i in 0 until stopApi.length()) {
-            val dateDepart = stopApi.getJSONObject(i).getString("departure_time")
-            val dateArrivee = stopApi.getJSONObject(i).getString("arrival_time")
-            val stationLat = stopApi.getJSONObject(i).getJSONObject("stop_point").getJSONObject("coord").getString("lat").toDouble()
-            val stationLon = stopApi.getJSONObject(i).getJSONObject("stop_point").getJSONObject("coord").getString("lon").toDouble()
-            val stationUic = stopApi.getJSONObject(i).getJSONObject("stop_point").getString("id").split(":")[2].toInt()
-            val stationLibelle = stopApi.getJSONObject(i).getJSONObject("stop_point").getString("name").split("(")[0]
+        // On effectue le traitement que si le body a bien reçu une requête
+        if (body != null) {
 
-            val station = Station(stationUic,stationLibelle,stationLon,stationLat)
-            val stop = Stop(
-                dateHeures(dateDepart),
-                dateMinutes(dateDepart),
-                dateHeures(dateArrivee),
-                dateMinutes(dateArrivee),
-                station
-            )
+            //  On récupère les arrets
+            val stopApi = body!!.getJSONArray("vehicle_journeys").getJSONObject(0).getJSONArray("stop_times")
 
-            if(i == 0){
-                addStop(stop,true,false)
+            // Boolean qui permet de récupérer les trajets qu'à partir de la gare selectionné si false
+            // Si true la gare de départ est la gare d'origine du train
+            // Si false la gare de départ est la gare selectionné dans l'autocomplete
+            var trajetAvantStatut: Boolean = trajetAvant
+
+            for (i in 0 until stopApi.length()) {
+
+                // On récupère le code de la gare
+                val stationUic = stopApi.getJSONObject(i).getJSONObject("stop_point").getString("id").split(":")[2].toInt()
+
+                // On vérifie si il s'agit de la gare sélectionné pour ajouter les stops à partir de ce moment, si trajetAvant était = false
+                if (stationUic == stationDepart.getCodeUIC()) {
+                    trajetAvantStatut = true
+                }
+
+                if (trajetAvantStatut) {
+
+                    // On récupère les informations venant de l'api pour faire un stop et une station
+                    val dateDepart = stopApi.getJSONObject(i).getString("departure_time")
+                    val dateArrivee = stopApi.getJSONObject(i).getString("arrival_time")
+                    val stationLat = stopApi.getJSONObject(i).getJSONObject("stop_point").getJSONObject("coord").getString("lat").toDouble()
+                    val stationLon = stopApi.getJSONObject(i).getJSONObject("stop_point").getJSONObject("coord").getString("lon").toDouble()
+                    val stationLibelle = stopApi.getJSONObject(i).getJSONObject("stop_point").getString("name").split("(")[0]
+
+                    // On crée les objets stop et station
+                    val station = Station(stationUic, stationLibelle, stationLon, stationLat)
+                    val stop = Stop(
+                        dateHeures(dateDepart),
+                        dateMinutes(dateDepart),
+                        dateHeures(dateArrivee),
+                        dateMinutes(dateArrivee),
+                        station
+                    )
+
+                    if (stationUic == stationDepart.getCodeUIC() && from == null || trajetAvant && from == null ) {
+                        // On ajoute un départ que si il s'agit de la gare sélectionné et le from n'a pas encore été initialisé
+                        // Ou on ajoute un départ si le from n'a pas encore été initialisé et qu'on veut afficher le trajet depuis la réel gare de départ du train
+                        addStop(stop, true, false)
+                    } else if (i == stopApi.length() - 1) {
+                        // On ajoute l'arrivée
+                        addStop(stop, false, true)
+                    } else {
+                        // On ajoute un stop / un "arret"
+                        addStop(stop, false, false)
+                    }
+                }
             }
-            else if(i == stopApi.length()-1){
-                addStop(stop,false,true)
-            }
-            else{
-                addStop(stop,false,false)
-            }
-
         }
     }
 

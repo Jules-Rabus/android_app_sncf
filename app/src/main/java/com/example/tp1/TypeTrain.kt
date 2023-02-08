@@ -8,5 +8,6 @@ enum class TypeTrain {
     TRANSILIEN,
     Autocar,
     Bus,
-    additional
+    additional,
+    Train
 }

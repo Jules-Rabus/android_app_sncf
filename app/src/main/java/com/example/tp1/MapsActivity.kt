@@ -1,17 +1,17 @@
 package com.example.tp1
 
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.widget.ListView
 import android.widget.TextView
-
+import androidx.appcompat.app.AppCompatActivity
+import com.example.tp1.databinding.ActivityMapsBinding
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
-import com.example.tp1.databinding.ActivityMapsBinding
+import com.google.android.gms.maps.model.PolylineOptions
+
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -25,9 +25,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         binding = ActivityMapsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // On récupère le train dans le intent
         train = intent.getParcelableExtra<Train>("train")!!
         val textViewTrain = findViewById<TextView>(R.id.textViewTrain)
-        textViewTrain.text = "${train.getType()} n°${train.getNum()}  ${train.getFrom().getStation().getName()} - ${train.getTo().getStation().getName()}"
+
+        // On affiche les informations du train dans le textView
+        val stringTextView = "${train.getType()} n°${train.getNum()} \n  ${train.getFrom().getStation().getName()} - ${train.getTo().getStation().getName()}"
+        textViewTrain.text = stringTextView
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         val mapFragment = supportFragmentManager
@@ -46,31 +50,47 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
      */
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
+        val trajetPolyline = PolylineOptions()
 
-        addStop(mMap,train.getFrom(),"Départ");
+        // On rajoute le marker du départ et ses coordonnées
+        addStop(train.getFrom(),"Départ")
+        var station = train.getFrom().getStation()
+        trajetPolyline.add(LatLng(station.getLat(),station.getLon()))
 
+        // On rajoute les marker des stops / "arrets" et leur cordonnées
         val stops = train.getStops()
-        val count = stops!!.size
+        val count = stops.size
         if( count > 0){
             for (i in 0 until count) {
-                addStop(mMap, stops.get(i),"Arrivée")
+                station = stops.get(i).getStation()
+                trajetPolyline.add(LatLng(station.getLat(),station.getLon()))
+                addStop(stops.get(i),"Arrivée")
             }
         }
 
+        // On rajoute le marker de l'arrivée et ses coordonnées
+        addStop(train.getTo(),"Arrivée")
+        station = train.getTo().getStation()
+        trajetPolyline.add(LatLng(station.getLat(),station.getLon()))
 
-        addStop(mMap,train.getTo(),"Arrivée");
-        // Add a marker in Sydney and move the camera
+        // On rajoute le tracé du trajte
+        googleMap.addPolyline(trajetPolyline)
+
+        // On zoom et déplace la "caméra" sur la gare de départ
         val stationFrom = train.getFrom().getStation()
         val from = LatLng(stationFrom.getLat(), stationFrom.getLon())
         mMap.moveCamera(CameraUpdateFactory.zoomTo(10F))
         mMap.moveCamera(CameraUpdateFactory.newLatLng(from))
     }
 
-    private fun addStop(map: GoogleMap, stop: Stop, type: String){
+    private fun addStop(stop: Stop, type: String){
+
+        // On récupère la gare
         val station = stop.getStation()
         val coord = LatLng(station.getLat(),station.getLon())
         lateinit var marker: MarkerOptions
 
+        // On vérifie que le format de l'heure est correcte sinon on ne le rajoute pas
         if(!stop.getHeure().equals("h")){
             marker = MarkerOptions()
                 .position(coord)
@@ -78,11 +98,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 .snippet("$type : ${stop.getHeure()}")
         }
         else{
+            // Ce cas permet de rien afficher quand on a pas les horaires pour les bus/autocar
             marker = MarkerOptions()
                 .position(coord)
                 .title(station.getName())
         }
 
+        // On rajoute le marker
         mMap.addMarker(marker)
     }
 

@@ -24,6 +24,8 @@ class Stop(
         return station
     }
 
+    // Fonction qui permet d'avoir l'heure du train formaté, elle est utilisé dans le snippet des marker
+    // "18h23" par exemple
     fun getHeure(): String{
         return hourArrival + "h" + minuteArrival
     }
